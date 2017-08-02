@@ -1,0 +1,8 @@
+Manifest-Version: 1.0
+Ant-Version: Apache Ant 1.9.6
+Created-By: 1.8.0_131-8u131-b11-0ubuntu1.16.04.2-b11 (Oracle Corporati
+ on)
+Main-Class: com.pnfsoftware.pleaseRopPlugin.PleaseRopPlugin
+JebPlugin-entryclass: com.pnfsoftware.pleaseRopPlugin
+Class-Path: 
+

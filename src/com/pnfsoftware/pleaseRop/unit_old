@@ -1,0 +1,328 @@
+package com.pnfsoftware.pleaseRop;
+
+import java.awt.LinearGradientPaint;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.Stack;
+
+import javax.xml.transform.sax.SAXTransformerFactory;
+
+import com.pnfsoftware.jeb.core.output.tree.ITreeDocument;
+import com.pnfsoftware.jeb.core.output.tree.impl.Node;
+import com.pnfsoftware.jeb.core.output.tree.impl.StaticTreeDocument;
+import com.pnfsoftware.jeb.core.units.INativeCodeUnit;
+import com.pnfsoftware.jeb.core.units.IUnit;
+import com.pnfsoftware.jeb.core.units.code.ICodeUnit;
+import com.pnfsoftware.jeb.core.units.code.IInstruction;
+import com.pnfsoftware.jeb.core.units.code.IInstructionOperand;
+import com.pnfsoftware.jeb.core.units.code.android.dex.IDalvikInstructionSwitchData;
+import com.pnfsoftware.jeb.core.units.code.asm.analyzer.ICallGraphManager;
+import com.pnfsoftware.jeb.core.units.code.asm.analyzer.INativeCodeAnalyzer;
+import com.pnfsoftware.jeb.core.units.code.asm.analyzer.INativeCodeModel;
+import com.pnfsoftware.jeb.core.units.code.asm.cfg.BasicBlock;
+import com.pnfsoftware.jeb.core.units.code.asm.cfg.CFG;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.IEConverter;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.IEGlobalContext;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.IERoutineContext;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.INativeDecompilerUnit;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.exceptions.DecompilerException;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEAssign;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IECall;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEGeneric;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEJump;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEJumpFar;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEReturn;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEStatement;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEVar;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.opt.EMasterOptimizer;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.opt.OptimizerEntry;
+import com.pnfsoftware.jeb.core.units.code.asm.items.INativeInstructionItem;
+import com.pnfsoftware.jeb.core.units.code.asm.items.INativeMethodItem;
+import com.pnfsoftware.jeb.core.util.DecompilerHelper;
+import com.pnfsoftware.jeb.util.logging.GlobalLog;
+import com.pnfsoftware.jeb.util.logging.ILogger;
+
+public class PleaseRopUnit {
+
+	// Needed to print to JEB's console.
+	private static final ILogger logger = GlobalLog.getLogger(PleaseRopUnit.class);
+	// 
+	private Map<String, Map<String, List<String>>> artifactsMap = new HashMap<>();
+
+	private String artifactName = new String();
+
+	private IUnit artifact;
+
+	private Map<String, Long> ropChains = new HashMap<>();
+
+	// Thread started by the plugin.
+	PleaseRopUnit(List<ICodeUnit> codeUnits) {
+
+		try {		
+			for(int i = 0; i < codeUnits.size(); i++){
+				logger.info("Creating CVEs");
+				INativeCodeUnit<IInstruction> codeUnit = (INativeCodeUnit<IInstruction>) codeUnits.get(0);
+
+				artifact = (IUnit)codeUnit.getParent();
+
+				artifactName = artifact.getName();
+
+				INativeDecompilerUnit<?> decomp = (INativeDecompilerUnit<?>) DecompilerHelper.getDecompiler(
+						codeUnit);
+
+				if (decomp == null) {
+
+					logger.info("There is no decompiler available for code unit %s", codeUnit.toString());
+					return;
+
+				}
+
+				List<? extends INativeMethodItem> methods = codeUnit.getInternalMethods();
+
+				for (INativeMethodItem method: methods) {
+
+					String methodAddress = method.getAddress();
+
+					if (decomp.canDecompile(methodAddress)) {
+
+						decomp.decompile(methodAddress);
+
+					}
+
+				}
+
+				IEConverter<?> converter = decomp.getConverter();
+
+				// Getting all the routine contexts from the global context.
+				IEGlobalContext globalContext = converter.getGlobalContext();
+				List<IERoutineContext> routineCtxList = (List<IERoutineContext>) globalContext.getRoutineContexts();
+
+				//              // Finding interesting functions.
+				for(IERoutineContext routineCtx: routineCtxList){
+
+					CFG<IEStatement> cfg= routineCtx.getCfg(IERoutineContext.CFGTAG_FINAL_PRENORM);
+					if (cfg != null) {
+						//FIXME: delete before prod.
+						cfg.toDot(".", "RetDot");
+						// Iterate through each basic blocks.
+						for (int j=0; j < cfg.size(); j++) {
+
+							BasicBlock<IEStatement> basicBlock = cfg.get(j);
+
+							// Iterate through each statements.
+							for (int k = basicBlock.size() - 1; k >= 0; k--) {
+
+								if (k == 0) {
+									continue;
+								}
+
+								IEStatement statement = basicBlock.get(k);
+
+								if ((statement instanceof IEReturn) || (statement instanceof IECall)) {
+
+									logger.info("-----");
+
+									List<IEStatement> gadgetStatements = new  ArrayList<>();
+									do {
+
+										gadgetStatements.add(statement);
+										k--;
+										statement = basicBlock.get(k);
+										if (statement instanceof IECall) {
+
+
+										}
+
+									} while (!(statement instanceof IECall) && k > 0 && !(statement instanceof IEJump) && !(statement instanceof IEJumpFar));
+
+
+									if (gadgetStatements.size() == 0) {
+
+										continue;
+
+									}
+
+
+
+									IEStatement firstGadgetStatement = gadgetStatements.get(0);
+									List<Long> firstStatementAddresses = new ArrayList<Long>(firstGadgetStatement.getLowerLevelAddresses());
+									String firstInstructionAddress = Long.toHexString(firstStatementAddresses.get(0));
+
+									String gadgetLine = new String();
+
+									gadgetLine += "0x" + firstInstructionAddress;
+									List<Long> alreadyAddedAddresses = new ArrayList<>();
+
+									for (int l=gadgetStatements.size() - 1; l >= 0; l--) {
+
+
+										IEStatement gadgetStatement = gadgetStatements.get(l);
+										List<Long> gadgetStatementAddresses = new ArrayList<Long>(gadgetStatement.getLowerLevelAddresses());
+										Collections.reverse(gadgetStatementAddresses);
+										logger.info("statement: %s", gadgetStatement.toString());
+										logger.info("Number of addresses corresponding to that statement: %d", gadgetStatementAddresses.size());
+										
+										
+										for (Long instructionAddress: gadgetStatementAddresses) {
+
+											if (!alreadyAddedAddresses.contains(instructionAddress)) {
+
+												alreadyAddedAddresses.add(instructionAddress);
+												INativeInstructionItem instructionItem = (INativeInstructionItem) codeUnit.getNativeItemAt(instructionAddress);
+												IInstruction instruction = instructionItem.getInstruction();
+												gadgetLine += "; ";
+												gadgetLine += instruction.getMnemonic();
+												logger.info("mnemonic: %s : %s", Long.toHexString(instructionAddress), instruction.getMnemonic());
+												IInstructionOperand[] operands = instruction.getOperands();
+
+												for (IInstructionOperand operand: operands) {
+													gadgetLine += ", ";
+													gadgetLine += operand.toString();
+
+												}
+											}
+										}
+									}
+
+									logger.info("%s", gadgetLine);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		catch (NullPointerException e) {
+
+			// FIXME: prints only the real terminal and not to JEB's console.
+			StackTraceElement[] stackTrace = e.getStackTrace();
+			for (int i = 0; i < stackTrace.length; i++) {
+				logger.debug("%s", stackTrace[i].toString());
+			}
+
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
+
+	}
+
+	/*
+	 * Gets the ID of the destination variable to check the type of it.
+	 * If the IEStatement is not an IEAssign, returns 0x10000000.
+	 * 
+	 * @param statement IEStatement that should be a IEAssign (to have a destination operand)
+	 * @return id (0x10000000 if not applicable).
+	 *
+	 * */
+	
+	private int getDestinationOperandId(IEStatement statement) {
+		
+		int id = 0x10000000; // Invalid ID.
+		
+		if (statement instanceof IEAssign) {
+
+			IEGeneric destinationOperand = ((IEAssign)statement).getDstOperand();
+
+			if (destinationOperand instanceof IEVar) {
+
+				id = ((IEVar) destinationOperand).getId();
+				
+			}
+		}
+		
+		return id;
+		
+	}
+	
+	/*
+	 * Gets the ID of the destination variable to check the type of it.
+	 * If the IEStatement is not an IEAssign, returns 0x10000000.
+	 * 
+	 * @param statement IEStatement that should be a IEAssign (to have a destination operand)
+	 * @return id (0x10000000 if not applicable).
+	 *
+	 * */
+	
+	private int getSourceOperandId(IEStatement statement) {
+		
+		int id = 0x10000000; // Invalid ID.
+		
+		if (statement instanceof IEAssign) {
+
+			IEGeneric destinationOperand = ((IEAssign)statement).getSrcOperand();
+
+			if (destinationOperand instanceof IEVar) {
+
+				id = ((IEVar) destinationOperand).getId();
+				
+			}
+		}
+		
+		logger.info("src operand: %d", id);
+		
+		return id;
+		
+	}
+	
+	
+	/*
+	 * Creates a TableDocument containing every callers of a certain function
+	 * and the number of occurrences of calls in the same caller.
+	 * 
+	 * @param tableMap Map of the callers and its number of call occurrences.
+	 * @return TableDocument that will be added as a new presentation. 
+	 * */
+    private ITreeDocument createCallerTree() {
+    	
+        List<Node> root = new ArrayList<>(); 				// Each caller has a row
+        Set<String> artifactSet = artifactsMap.keySet();		// Set of each caller's name.
+        Object[] artifactNames = artifactSet.toArray();	// Set to Array.
+        
+        
+        // Create a row for each caller of the selected function.
+        for (int i =0; i < artifactsMap.size(); i++) {
+        	//String callerRefCount = tableMap.get(keys[i].toString()).toString();
+        	
+        	String artifactName = artifactNames[i].toString();
+        	Node artifact = new Node(artifactName);
+        	logger.info("Creating node for %s", artifact);
+        	
+        	Map<String, List<String>> functionsMap = artifactsMap.get(artifactName);
+        	
+        	Set<String> functionSet = functionsMap.keySet();	// Set of each caller's name.
+            Object[] functionNames = functionSet.toArray();		// Set to Array.
+
+        	for (int j = 0; j < functionsMap.size(); j++) {
+        	
+        		String functionName = functionNames[j].toString();
+        		Node callers = new Node(functionName);
+        		logger.info("Creating node for %s", functionName);
+        		List<String> callersList = functionsMap.get(functionName);
+        		
+        		for (int k=0; k < callersList.size(); k++){
+        			
+        			String callerName = callersList.get(k);
+        			callers.addChild(new Node(callerName));
+        			logger.info("Creating node for %s", callerName);
+        			
+        		}
+        		
+        		artifact.addChild(callers);
+        		
+        	}
+        	root.add(artifact);
+        	
+        	//rows.add(new TableRow(new Cell(keys[i].toString()), new Cell(callerRefCount)));
+        }
+        return new StaticTreeDocument(root);
+        
+    }
+	
+}

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+
+<project basedir="." default="build" name="pleaseropplugin">
+
+    <property name="jebpath" value="/home/svieg/tools/JEB/bin/cl/jeb.jar"/>
+    <property name="outfile" value="out/PleaseRopPlugin.jar"/>
+    <property name="entryclass" value="com.pnfsoftware.pleaseRopPlugin"/>
+	<property name="extcp_build"    value=""/>
+	<property name="extcp_manifest" value="jeb.jar"/>
+
+	<target name="build" depends="compile,package"/>
+	
+    <target name="compile">
+        <delete dir="bin"/>
+        <mkdir dir="bin"/>
+        <javac debug="true" debuglevel="source,lines,vars"
+               destdir="bin" includeantruntime="false" source="1.8" target="1.8">
+            <src path="src"/>
+            <classpath>
+                <pathelement location="${jebpath}"/>
+            	<pathelement path="${extcp_build}"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <target name="package">
+        <delete file="${outfile}"/>
+        <jar destfile="${outfile}">
+            <manifest>
+            	<attribute name="Main-Class" value="com.pnfsoftware.pleaseRopPlugin.PleaseRopPlugin"/>
+            	<attribute name="Class-Path" value="${extcp_manifest}"/>
+            </manifest>
+            <fileset dir="bin"/>
+        </jar>
+    </target>
+
+</project>
+
