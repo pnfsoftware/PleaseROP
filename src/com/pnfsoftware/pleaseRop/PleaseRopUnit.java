@@ -21,6 +21,7 @@ import com.pnfsoftware.jeb.core.units.code.asm.decompiler.IERoutineContext;
 import com.pnfsoftware.jeb.core.units.code.asm.decompiler.INativeDecompilerUnit;
 import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEAssign;
 import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEGeneric;
+import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEImm;
 import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEStatement;
 import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEVar;
 import com.pnfsoftware.jeb.core.units.code.asm.items.INativeInstructionItem;
@@ -47,6 +48,8 @@ public class PleaseRopUnit {
     private Map<String, List<String>> gadgetMap = new HashMap<String, List<String>>();
     
     private String artifactName;
+    
+    private int pcId;
 
     // Thread started by the plugin.
     PleaseRopUnit(List<ICodeUnit> codeUnits) {
@@ -59,7 +62,9 @@ public class PleaseRopUnit {
                 logger.info("Looking for gadgets...");
                 codeUnit = (INativeCodeUnit<IInstruction>)codeUnits.get(0);
 
-                artifactName = codeUnit.getName();
+                IUnit parentUnit = (IUnit)codeUnit.getParent();
+                
+                artifactName = parentUnit.getName();
                 
                 decompiler = (INativeDecompilerUnit<?>)DecompilerHelper.getDecompiler(codeUnit);
 
@@ -71,6 +76,10 @@ public class PleaseRopUnit {
                 }
 
                 converter = decompiler.getConverter();
+                
+                IEVar pcRegister = converter.getProgramCounter();
+                
+                pcId = pcRegister.getId();
 
                 List<CFG<IEStatement>> cfgList = getAllConvertedCfgs(codeUnit);
 
@@ -220,17 +229,9 @@ public class PleaseRopUnit {
 
             int destinationId = getDestinationOperandId(statement);
 
-            if(destinationId == 888) {
+            if(destinationId == pcId) {
 
                 do {
-
-                    String mnemonic = statement.getMnemonic();
-
-                    if(mnemonic.charAt(0) == 'B') {
-
-                        break;
-
-                    }
 
                     gadgetStatements.add(statement);
                     k--;
@@ -238,7 +239,7 @@ public class PleaseRopUnit {
                     destinationId = getDestinationOperandId(statement);
 
                 }
-                while(destinationId != 888 && k > 0);
+                while(destinationId != pcId && k > 0);
             }
 
             else {
@@ -282,19 +283,24 @@ public class PleaseRopUnit {
                         .getNativeItemAt(instructionAddress);
                 IInstruction instruction = instructionItem.getInstruction();
 
-                // FIXME: First occurence shouldn't have the "; "
-                // Adding the mnemonic to the gadget line.
-                
-                gadgetLine += instruction.getMnemonic();
-
-                // Adding every operand to the gadget line.
                 IInstructionOperand[] operands = instruction.getOperands();
-
-                for(IInstructionOperand operand: operands) {
-                    gadgetLine += ", ";
-                    gadgetLine += operand.toString();
-
+                
+                for (IInstructionOperand operand: operands) {
+                    
+                   if (operand instanceof IEImm) {
+                       
+                       logger.info("Immediate: %s", operand.format(instruction, instructionItem.getMemoryAddress()));
+                       
+                   }
+                   else {
+                       
+                       logger.info("Not immediate: %s", operand.format(instruction, instructionItem.getMemoryAddress()));
+                       
+                   }
+                    
                 }
+                
+                gadgetLine += instruction.format(null);
                 gadgetLine += "; ";
             }
         }
