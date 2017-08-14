@@ -21,11 +21,11 @@ import com.pnfsoftware.jeb.core.units.code.asm.decompiler.IERoutineContext;
 import com.pnfsoftware.jeb.core.units.code.asm.decompiler.INativeDecompilerUnit;
 import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEAssign;
 import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEGeneric;
-import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEImm;
 import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEStatement;
 import com.pnfsoftware.jeb.core.units.code.asm.decompiler.ir.IEVar;
 import com.pnfsoftware.jeb.core.units.code.asm.items.INativeInstructionItem;
 import com.pnfsoftware.jeb.core.units.code.asm.items.INativeMethodItem;
+import com.pnfsoftware.jeb.core.units.code.asm.processor.IInstructionOperandGeneric;
 import com.pnfsoftware.jeb.core.util.DecompilerHelper;
 import com.pnfsoftware.jeb.util.logging.GlobalLog;
 import com.pnfsoftware.jeb.util.logging.ILogger;
@@ -40,17 +40,19 @@ public class PleaseRopUnit {
 
     private INativeDecompilerUnit<?> decompiler;
 
-    @SuppressWarnings("unused")
-    private Map<String, Long> ropChains = new HashMap<>();
-
     private INativeCodeUnit<IInstruction> codeUnit;
 
     private Map<String, List<String>> gadgetMap = new HashMap<String, List<String>>();
     
     private String artifactName;
     
+    private Map<String, Long> gadgetAddrMap = new HashMap<String, Long>();
+    
+    private List<Long> gadgetBlacklist = new ArrayList<Long>();
+    
     private int pcId;
 
+    @SuppressWarnings("unchecked")
     // Thread started by the plugin.
     PleaseRopUnit(List<ICodeUnit> codeUnits) {
 
@@ -108,9 +110,8 @@ public class PleaseRopUnit {
                                 IEStatement firstGadgetStatement = gadgetStatements.get(0);
                                 List<Long> firstStatementAddresses = new ArrayList<Long>(
                                         firstGadgetStatement.getLowerLevelAddresses());
-                                String firstInstructionAddress = Long.toHexString(firstStatementAddresses.get(0));
-                                gadgetLine += String.format("0x%s: ", firstInstructionAddress);
-
+                                long firstInstructionAddress = firstStatementAddresses.get(0);
+                                
                                 for(int l = 0; l < gadgetStatements.size() ; l++) {
 
                                     IEStatement gadgetStatement = gadgetStatements.get(l);
@@ -121,21 +122,40 @@ public class PleaseRopUnit {
 
                                 }
                                 
-                                gadgetList.add(gadgetLine);
-
-                                
+                                if (gadgetLine != null) {
+                                    
+                                    if (!gadgetList.contains(gadgetLine)) {
+                                    
+                                        gadgetAddrMap.put(gadgetLine, firstInstructionAddress);
+                                        gadgetList.add(gadgetLine);
+                                    }
+                                }
                             }
                         }
                     }
                 }
-                gadgetMap.put(artifactName, gadgetList);
+                Collections.sort(gadgetList);
+                
+                List<String> gadgetsWithAddresses = new ArrayList<>();
+                
+                for (String gadgetLine: gadgetList) {
+                    
+                    Long gadgetAddress = gadgetAddrMap.get(gadgetLine);
+                    
+                    String gadgetWithAddress =  "0x" + gadgetAddress.toString() + ": " + gadgetLine;
+                    
+                    gadgetsWithAddresses.add(gadgetWithAddress);
+                    
+                }
+                
+                gadgetMap.put(artifactName, gadgetsWithAddresses);
             }
             
             
             ITreeDocument treeDocument = createTree(gadgetMap);
             IUnitDocumentPresentation gadgetPresentation =  new UnitRepresentationAdapter(
                     200,
-                    "API Use",
+                    "ROP gadgets",
                     false,
                     treeDocument
                     );
@@ -256,6 +276,7 @@ public class PleaseRopUnit {
 
         return gadgetsList;
     }
+    
 
     /**
      * Takes a list of instruction addresses and formats it 
@@ -283,24 +304,28 @@ public class PleaseRopUnit {
                         .getNativeItemAt(instructionAddress);
                 IInstruction instruction = instructionItem.getInstruction();
 
-                IInstructionOperand[] operands = instruction.getOperands();
-                
-                for (IInstructionOperand operand: operands) {
-                    
-                   if (operand instanceof IEImm) {
-                       
-                       logger.info("Immediate: %s", operand.format(instruction, instructionItem.getMemoryAddress()));
-                       
-                   }
-                   else {
-                       
-                       logger.info("Not immediate: %s", operand.format(instruction, instructionItem.getMemoryAddress()));
-                       
-                   }
-                    
+                IInstructionOperand[] instructionOperands = instruction.getOperands();
+
+                if (instructionOperands.length == 1) {
+
+                    IInstructionOperand instructionOperand = instructionOperands[0];
+                    if (instructionOperand instanceof IInstructionOperandGeneric) {
+
+                        int operandType = ((IInstructionOperandGeneric)instructionOperand).getOperandType();
+
+                        
+                        
+                        if (operandType == IInstructionOperandGeneric.TYPE_RELADDR) {
+
+                            return null;
+
+                        }
+
+                    }
                 }
                 
-                gadgetLine += instruction.format(null);
+                String formattedInstruction = instruction.format(null);
+                gadgetLine += formattedInstruction; 
                 gadgetLine += "; ";
             }
         }
