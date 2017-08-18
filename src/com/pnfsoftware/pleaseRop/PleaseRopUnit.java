@@ -62,7 +62,7 @@ public class PleaseRopUnit {
             
             for(int i = 0; i < codeUnits.size(); i++) {
                 logger.info("Looking for gadgets...");
-                codeUnit = (INativeCodeUnit<IInstruction>)codeUnits.get(0);
+                codeUnit = (INativeCodeUnit<IInstruction>)codeUnits.get(i);
 
                 IUnit parentUnit = (IUnit)codeUnit.getParent();
                 
