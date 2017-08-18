@@ -2,7 +2,7 @@
 
 <project basedir="." default="build" name="pleaseropplugin">
 
-    <property name="jebpath" value="/home/svieg/tools/JEB/bin/cl/jeb.jar"/>
+    <property name="jebpath" value="${JEB_HOME}/bin/cl/jeb.jar"/>
     <property name="outfile" value="out/PleaseRopPlugin.jar"/>
     <property name="entryclass" value="com.pnfsoftware.pleaseRopPlugin"/>
 	<property name="extcp_build"    value=""/>
