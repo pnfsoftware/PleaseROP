@@ -6,7 +6,7 @@ The purpose of this plugin is to find ROP gadgets regardless of the processor ar
 
 Minimum JEB version: [2.3 Pro](https://www.pnfsoftware.com/jeb2/)
 
-Tutorial on how to use: [Blog post](https://www.pnfsoftware.com/blog/)
+Blog post using PleaseROP: [Blog post](https://www.pnfsoftware.com/blog/firmware-exploitation-with-jeb-part-1/)
 
 ## Getting Started
 
