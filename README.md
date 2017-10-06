@@ -14,6 +14,8 @@ Blog post using PleaseROP: [Blog post](https://www.pnfsoftware.com/blog/firmware
 
 Copy the JAR file into [JEB_FOLDER]/coreplugins folder and restart JEB.
 
+If you want to build from source: `ant -Dversion=x.y.z` (the version number is stored in the PleaseRopPlugin class)
+
 ### Running Signature Generator plugin
 
 1. In JEB2, click `File -> Open` to open an android apk.
