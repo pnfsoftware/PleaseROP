@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<classpath>
-	<classpathentry kind="src" path="src"/>
-	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
-	<classpathentry kind="lib" path="C:/Users/nicol/jeb2/TESTBUILDS/3_business-741296147584833131-2.3-master/bin/cl/jeb.jar"/>
-	<classpathentry kind="output" path="bin"/>
-</classpath>
